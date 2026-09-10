@@ -1,0 +1,17 @@
+[Unit]
+Description=Upwork & Fiverr Gmail Realtime Telegram Notifier
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/upwork-telegram-notifier
+ExecStart=%h/upwork-telegram-notifier/venv/bin/python3 -u %h/upwork-telegram-notifier/main.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=5
+EnvironmentFile=%h/upwork-telegram-notifier/.env
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
