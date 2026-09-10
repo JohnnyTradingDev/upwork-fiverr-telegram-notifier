@@ -70,8 +70,17 @@ def get_email_body(msg: Message) -> tuple[str, str]:
     return plain_text, html_text
 
 def clean_text(text: str) -> str:
-    """Collapses whitespace and extra blank lines."""
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    """Collapses whitespace and removes duplicate consecutive lines."""
+    lines = []
+    last_line = ""
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if s == last_line:
+            continue
+        lines.append(s)
+        last_line = s
     return "\n".join(lines)
 
 def detect_platform(sender: str, subject: str, body: str) -> str:
@@ -84,7 +93,6 @@ def detect_platform(sender: str, subject: str, body: str) -> str:
     if "fiverr" in combined_header or "@fiverr.com" in combined_all or "@e.fiverr.com" in combined_all:
         return "fiverr"
 
-    # Fallback to body content check
     if "upwork.com" in combined_all:
         return "upwork"
     if "fiverr.com" in combined_all:
@@ -107,7 +115,7 @@ def parse_upwork_details(subject: str, cleaned_text: str, soup: BeautifulSoup, p
     else:
         email_type = "general"
 
-    # URL
+    # URL extraction
     url = ""
     if soup:
         for a in soup.find_all("a", href=True):
@@ -128,57 +136,89 @@ def parse_upwork_details(subject: str, cleaned_text: str, soup: BeautifulSoup, p
         if match_url:
             url = match_url.group(0)
 
-    # Budget
+    # Budget extraction
     budget = ""
-    budget_patterns = [
-        r"Hourly:\s*\$[0-9,]+(?:\.[0-9]{2})?(?:\s*-\s*\$[0-9,]+(?:\.[0-9]{2})?)?",
-        r"Fixed[- ]price:\s*\$[0-9,]+(?:\.[0-9]{2})?",
-        r"Budget:\s*\$[0-9,]+(?:\.[0-9]{2})?",
-        r"\$[0-9,]+(?:\.[0-9]{2})?(?:\s*-\s*\$[0-9,]+(?:\.[0-9]{2})?)?\s*/\s*hr",
-        r"\$[0-9,]+(?:\.[0-9]{2})?\s*Est\.\s*Budget"
-    ]
-    for pattern in budget_patterns:
-        m = re.search(pattern, cleaned_text, re.IGNORECASE)
-        if m:
-            budget = m.group(0)
-            break
+    bm1 = re.search(r"(?:Fixed(?:\s*[- ]?price)?|Hourly|Budget):\s*\$[0-9,]+(?:\.[0-9]{2})?(?:\s*-\s*\$[0-9,]+(?:\.[0-9]{2})?)?", plain_text or cleaned_text, re.IGNORECASE)
+    if bm1:
+        budget = bm1.group(0)
+    else:
+        bm2 = re.search(r"(Fixed-price|Hourly|Fixed|Budget)\s*[\u2022·•:\s]+\s*(\$[0-9,]+(?:\.[0-9]{2})?(?:\s*-\s*\$[0-9,]+(?:\.[0-9]{2})?)?)", cleaned_text, re.IGNORECASE)
+        if bm2:
+            budget = f"{bm2.group(1)}: {bm2.group(2)}"
+        else:
+            alt_budget = re.search(r"\$[0-9,]+(?:\.[0-9]{2})?\s*/\s*hr", cleaned_text, re.IGNORECASE)
+            if alt_budget:
+                budget = alt_budget.group(0)
 
     # Client Info
     client_info_parts = []
     if re.search(r"Payment (?:method )?verified", cleaned_text, re.IGNORECASE):
         client_info_parts.append("✅ Payment Verified")
-    client_spent = re.search(r"\$[0-9,kM\.]+\+?\s+spent", cleaned_text, re.IGNORECASE)
-    if client_spent:
-        client_info_parts.append(client_spent.group(0))
-    rating_match = re.search(r"([0-5]\.[0-9]{1,2})\s+of\s+5\s+stars", cleaned_text, re.IGNORECASE)
-    if rating_match:
-        client_info_parts.append(f"⭐ {rating_match.group(1)}/5")
-    country_match = re.search(r"(?:Location|Country):\s*([A-Za-z\s]+)", cleaned_text, re.IGNORECASE)
-    if country_match:
-        client_info_parts.append(f"📍 {country_match.group(1).strip()}")
+
+    rating_m = re.search(r"(?:Payment (?:method )?verified\s*[\u2022·•\s]+([0-5]\.[0-9]{1,2})|([0-5]\.[0-9]{1,2})\s+of\s+5\s+stars)", cleaned_text, re.IGNORECASE)
+    if rating_m:
+        val = rating_m.group(1) or rating_m.group(2)
+        client_info_parts.append(f"⭐ {val}/5")
+
+    spent_m = re.search(r"\$[0-9,kM\.]+\+?\s+spent", cleaned_text, re.IGNORECASE)
+    if spent_m:
+        client_info_parts.append(spent_m.group(0))
+
+    country_m = re.search(r"spent\s*[\u2022·•\s]+([A-Za-z ]{2,25}?)(?:\n|View|$)", cleaned_text)
+    if country_m:
+        country_name = country_m.group(1).strip()
+        if country_name.lower() not in ["view", "job", "details", "posted"]:
+            client_info_parts.append(f"📍 {country_name}")
 
     client_info = " | ".join(client_info_parts)
 
-    # Title
-    job_title = ""
-    if "invitation to interview:" in sub_lower:
-        job_title = re.sub(r"(?i)invitation to interview:\s*", "", subject).strip()
-    elif "you've been invited to submit a proposal to the job" in sub_lower:
-        job_title = re.sub(r"(?i)you've been invited to submit a proposal to the job\s*", "", subject).strip()
-    else:
-        job_title = subject
+    # Title cleanup
+    job_title = subject
+    strip_prefixes = [
+        r"^new job alert:\s*",
+        r"^jobs you might like:\s*",
+        r"^invitation to interview:\s*",
+        r"^you've been invited to submit a proposal to the job\s*"
+    ]
+    for p in strip_prefixes:
+        job_title = re.sub(p, "", job_title, flags=re.IGNORECASE).strip()
 
-    # Snippet
+    # Extract Skills
+    skills_found = []
+    skills_m = re.search(r"Skills:\s*\n((?:[^\n:]+:\s*https?://[^\n]+\n?)+)", plain_text)
+    if skills_m:
+        skills_found = [re.sub(r":\s*https?://.*", "", line).strip() for line in skills_m.group(1).splitlines() if line.strip()]
+
+    # Form concise snippet
     lines = cleaned_text.splitlines()
     snippet_lines = []
-    ignore_starts = ["view job", "submit proposal", "hello", "hi ", "upwork", "you have a new", "don't miss out", "invitation to interview"]
+    ignore_starts = [
+        "view job", "submit proposal", "hello", "hi ", "upwork",
+        "this job was just posted", "new job alert", "jobs you might like",
+        "don't miss out", "invitation to interview", "skills:", "posted"
+    ]
+    footer_stops = [
+        "view job details", "you received this email", "manage your alert",
+        "privacy policy", "contact support", "notification settings", "530 lytton"
+    ]
+
     for l in lines:
-        if any(l.lower().startswith(x) for x in ignore_starts):
-            continue
-        if len(l) > 15:
-            snippet_lines.append(l)
-        if len(snippet_lines) >= 4:
+        l_lower = l.lower()
+        if any(f in l_lower for f in footer_stops):
             break
+        if any(l_lower.startswith(x) for x in ignore_starts):
+            continue
+        if l in skills_found:
+            continue
+        if l == job_title or l in ["Fixed-price", "Hourly", "•", "USA"] or l.startswith("$"):
+            continue
+        if len(l) > 10:
+            snippet_lines.append(l)
+        if len(snippet_lines) >= 3:
+            break
+
+    if skills_found:
+        snippet_lines.append(f"🏷 <b>Kỹ năng:</b> {', '.join(skills_found[:5])}")
 
     snippet = "\n".join(snippet_lines) if snippet_lines else cleaned_text[:300]
 
@@ -193,7 +233,6 @@ def parse_upwork_details(subject: str, cleaned_text: str, soup: BeautifulSoup, p
 
 def parse_fiverr_details(subject: str, cleaned_text: str, soup: BeautifulSoup, plain_text: str) -> dict:
     sub_lower = subject.lower()
-    text_lower = cleaned_text.lower()
 
     if any(k in sub_lower for k in ["you got an order", "order placed", "received an order", "new order"]):
         email_type = "order"
@@ -208,7 +247,6 @@ def parse_fiverr_details(subject: str, cleaned_text: str, soup: BeautifulSoup, p
     else:
         email_type = "general"
 
-    # URL
     url = ""
     if soup:
         for a in soup.find_all("a", href=True):
@@ -229,7 +267,6 @@ def parse_fiverr_details(subject: str, cleaned_text: str, soup: BeautifulSoup, p
         if match_url:
             url = match_url.group(0)
 
-    # Price / Order Amount
     budget = ""
     price_match = re.search(r"(?:Total|Price|Amount|Budget|Order):\s*\$([0-9,]+(?:\.[0-9]{2})?)", cleaned_text, re.IGNORECASE)
     if price_match:
@@ -239,7 +276,6 @@ def parse_fiverr_details(subject: str, cleaned_text: str, soup: BeautifulSoup, p
         if dollar_match:
             budget = dollar_match.group(0)
 
-    # Buyer / Client Info
     client_info = ""
     buyer_match = re.search(r"(?:from|Buyer|by)\s+@?([a-zA-Z0-9_\-]+)", subject, re.IGNORECASE)
     if not buyer_match:
@@ -249,10 +285,8 @@ def parse_fiverr_details(subject: str, cleaned_text: str, soup: BeautifulSoup, p
         if buyer_name.lower() not in ["fiverr", "the", "a", "an", "your"]:
             client_info = f"👤 Khách: @{buyer_name}"
 
-    # Title
     title = subject
 
-    # Snippet
     lines = cleaned_text.splitlines()
     snippet_lines = []
     ignore_starts = ["view order", "view message", "reply now", "hello", "hi ", "fiverr", "great news"]
@@ -287,7 +321,6 @@ def parse_freelance_email(raw_email_bytes: bytes) -> dict:
 
     plain_text, html_text = get_email_body(msg)
 
-    # Parse HTML soup
     soup = BeautifulSoup(html_text, "html.parser") if html_text else None
     extracted_text = ""
     if soup:
@@ -298,8 +331,6 @@ def parse_freelance_email(raw_email_bytes: bytes) -> dict:
         extracted_text = plain_text
 
     cleaned_text = clean_text(extracted_text)
-
-    # Detect platform
     platform = detect_platform(sender, subject, plain_text + html_text)
 
     if platform == "upwork":
@@ -307,7 +338,6 @@ def parse_freelance_email(raw_email_bytes: bytes) -> dict:
     elif platform == "fiverr":
         details = parse_fiverr_details(subject, cleaned_text, soup, plain_text)
     else:
-        # Generic fallback
         details = {
             "email_type": "general",
             "title": subject,
@@ -331,5 +361,4 @@ def parse_freelance_email(raw_email_bytes: bytes) -> dict:
         "is_supported": platform in ("upwork", "fiverr")
     }
 
-# Backward compatibility alias
 parse_upwork_email = parse_freelance_email
