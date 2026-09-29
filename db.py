@@ -7,7 +7,6 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "jobs.db")
 
-# Default Timezone offset (Vietnam is UTC+7)
 TZ_OFFSET = int(os.getenv("TIMEZONE_OFFSET", "7"))
 USER_TZ = timezone(timedelta(hours=TZ_OFFSET))
 
@@ -86,20 +85,16 @@ def save_job(
 
 def get_daily_stats(date_str: str = None) -> dict:
     """
-    Returns aggregated stats for a given date (defaults to today).
+    Returns aggregated stats comparing Financial Video jobs vs Other Video jobs.
     """
     if not date_str:
         date_str = get_current_date_str()
 
     stats = {
         "date_str": date_str,
-        "total": 0,
-        "categories": {
-            "financial_video": 0,
-            "general_video": 0,
-            "mechanical_3d": 0,
-            "other": 0
-        },
+        "total_video": 0,
+        "financial_video": 0,
+        "other_video": 0,
         "financial_jobs": []
     }
 
@@ -108,24 +103,25 @@ def get_daily_stats(date_str: str = None) -> dict:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
-            # Group counts by category
+            # Count financial video jobs
             cursor.execute("""
-                SELECT category, COUNT(*) as cnt
-                FROM jobs
-                WHERE date_str = ?
-                GROUP BY category
+                SELECT COUNT(*) as cnt FROM jobs
+                WHERE date_str = ? AND category = 'financial_video'
             """, (date_str,))
-            rows = cursor.fetchall()
-            for r in rows:
-                cat = r["category"]
-                cnt = r["cnt"]
-                if cat in stats["categories"]:
-                    stats["categories"][cat] = cnt
-                else:
-                    stats["categories"]["other"] += cnt
-                stats["total"] += cnt
+            row = cursor.fetchone()
+            stats["financial_video"] = row["cnt"] if row else 0
 
-            # Get list of financial video jobs for detail summary
+            # Count other video jobs
+            cursor.execute("""
+                SELECT COUNT(*) as cnt FROM jobs
+                WHERE date_str = ? AND category = 'other_video'
+            """, (date_str,))
+            row = cursor.fetchone()
+            stats["other_video"] = row["cnt"] if row else 0
+
+            stats["total_video"] = stats["financial_video"] + stats["other_video"]
+
+            # Fetch list of financial video jobs for detail summary
             cursor.execute("""
                 SELECT title, budget, client_info, url, platform
                 FROM jobs

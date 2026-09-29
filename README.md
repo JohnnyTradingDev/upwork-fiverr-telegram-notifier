@@ -12,14 +12,14 @@
 - 🎯 **Niche Filtering (Financial Video Editing):**
   - **Immediate Alerts** for your target niche: Video Editing for Finance, Crypto, Forex, Trading, Stocks, Faceless YouTube, Short-form, and CapCut.
   - Direct client interactions (**Invitations**, **Offers**, **Messages**, **Orders**) are **ALWAYS** alerted immediately regardless of category.
-  - Non-matching job alerts (e.g. Mechanical/3D CAD or other industries) are silently recorded in the database without spamming your Telegram.
+  - Non-matching video jobs or general jobs are silently stored in the database without spamming your Telegram.
 - 📊 **SQLite Database & Daily Summary Digest:**
   - Persists all jobs to a local SQLite database (`jobs.db`).
   - Categorizes into:
     - 🎯 `financial_video`: Video Tài chính / Trading (Your core niche)
     - 🎬 `general_video`: Video Editing chung
-    - ⚙️ `mechanical_3d`: Cơ khí / 3D CAD (Legacy niche)
-    - 📂 `other`: Other categories
+    
+    - 🎬 `other_video`: Các job Video khác
   - Automatically sends a **Daily Summary** to Telegram every evening (default 22:00 local time).
 - 🟢 **Fiverr & Upwork Intelligence:**
   - Extracts **Job Title**, **Budget / Order Amount**, **Client Info** (Payment Verified, Rating ⭐, Total Spent 💰, Country 📍), and **Skills**.

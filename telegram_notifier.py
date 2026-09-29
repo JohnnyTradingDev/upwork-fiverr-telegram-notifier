@@ -125,29 +125,25 @@ def send_telegram_alert(
 
 def send_daily_summary(stats: dict) -> bool:
     """
-    Sends the end-of-day summary to Telegram.
+    Sends the end-of-day summary comparing Financial Video jobs vs Other Video jobs.
     """
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         logger.error("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing!")
         return False
 
     date_str = stats.get("date_str", "")
-    total = stats.get("total", 0)
-    cats = stats.get("categories", {})
+    total_video = stats.get("total_video", 0)
+    fin_count = stats.get("financial_video", 0)
+    other_video_count = stats.get("other_video", 0)
     financial_jobs = stats.get("financial_jobs", [])
 
-    fin_count = cats.get("financial_video", 0)
-    general_video_count = cats.get("general_video", 0)
-    mech_count = cats.get("mechanical_3d", 0)
-    other_count = cats.get("other", 0)
+    pct = f"{round((fin_count / total_video) * 100)}%" if total_video > 0 else "0%"
 
     lines = [
-        f"<b>📊 TỔNG KẾT VIỆC LÀM HÔM NAY ({date_str})</b>\n",
-        f"Tổng số cơ hội ghi nhận: <b>{total}</b> jobs\n",
-        f"🎯 <b>Video Tài chính (Ngách của bạn):</b> <b>{fin_count}</b> jobs",
-        f"🎬 <b>Video Editing chung:</b> {general_video_count} jobs",
-        f"⚙️ <b>Cơ khí / 3D CAD (Ngách cũ):</b> {mech_count} jobs",
-        f"📂 <b>Ngành nghề khác:</b> {other_count} jobs\n"
+        f"<b>📊 TỔNG KẾT JOB VIDEO HÔM NAY ({date_str})</b>\n",
+        f"Tổng số cơ hội Video ghi nhận: <b>{total_video}</b> jobs\n",
+        f"🎯 <b>Video Tài chính / Crypto / Trading:</b> <b>{fin_count}</b> jobs ({pct})",
+        f"🎬 <b>Các job Video khác:</b> {other_video_count} jobs\n"
     ]
 
     if financial_jobs:

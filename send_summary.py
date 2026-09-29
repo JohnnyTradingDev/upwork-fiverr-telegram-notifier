@@ -10,11 +10,11 @@ def trigger_summary(date_str: str = None) -> bool:
         user_now = datetime.now(timezone(timedelta(hours=TIMEZONE_OFFSET)))
         date_str = user_now.strftime("%Y-%m-%d")
     
-    print(f"Generating summary for date: {date_str}...")
+    print(f"Generating video jobs summary for date: {date_str}...")
     stats = db.get_daily_stats(date_str)
-    print(f"Total jobs recorded: {stats['total']}")
-    print(f"Categories breakdown: {stats['categories']}")
-    print(f"Financial video jobs: {len(stats['financial_jobs'])}")
+    print(f"Total video jobs: {stats['total_video']}")
+    print(f"Financial video jobs: {stats['financial_video']}")
+    print(f"Other video jobs: {stats['other_video']}")
     
     ok = send_daily_summary(stats)
     return ok

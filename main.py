@@ -178,15 +178,14 @@ def check_and_send_daily_summary(state: dict) -> dict:
         if now.hour == DAILY_SUMMARY_HOUR and state.get("last_summary_date") != today_str:
             logger.info(f"Daily summary time reached ({now.strftime('%H:%M')} TZ+{TIMEZONE_OFFSET}). Sending summary...")
             stats = db.get_daily_stats(today_str)
-            if stats["total"] > 0:
+            if stats.get("total_video", 0) > 0:
                 sent = send_daily_summary(stats)
                 if sent:
                     logger.info(f"Daily summary sent for {today_str}")
                     state["last_summary_date"] = today_str
                     save_state(state)
             else:
-                # No jobs recorded today yet, do not spam or mark sent
-                logger.info(f"No jobs recorded today ({today_str}). Skipping daily summary.")
+                logger.info(f"No video jobs recorded today ({today_str}). Skipping daily summary.")
                 state["last_summary_date"] = today_str
                 save_state(state)
     except Exception as e:
