@@ -2,6 +2,7 @@ import html
 import logging
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+from red_flags import scan_red_flags
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,8 @@ def send_telegram_alert(
     url: str = ""
 ) -> bool:
     """
-    Sends a formatted alert to Telegram for Upwork or Fiverr.
+    Sends a formatted alert to Telegram for Upwork or Fiverr,
+    including Red Flag warnings and portfolio proof suggestions.
     """
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         logger.error("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing!")
@@ -81,6 +83,23 @@ def send_telegram_alert(
         if len(clean_snippet) > 1200:
             clean_snippet = clean_snippet[:1200] + "..."
         lines.append(f"\n📝 <b>Nội dung:</b>\n<i>{clean_snippet}</i>")
+
+    # Scan for Red Flags in title + snippet
+    corpus = f"{display_title} {snippet}".lower()
+    flags = scan_red_flags(corpus)
+    if flags:
+        lines.append("\n🚨 <b>CẢNH BÁO RED FLAG:</b>")
+        for f in flags:
+            lines.append(f"• <i>{f}</i>")
+
+    # Suggest Portfolio Proof for Financial Video jobs
+    if category == "financial_video":
+        if any(w in corpus for w in ["crypto", "shorts", "reels", "tiktok", "bitcoin"]):
+            lines.append("\n💡 <b>Gợi ý Proof:</b> <code>Sample Video Crypto 183K views (Short-form)</code>")
+        elif any(w in corpus for w in ["forex", "mt4", "mt5", "trading", "tutorial", "screencast"]):
+            lines.append("\n💡 <b>Gợi ý Proof:</b> <code>Sample Video MT5 2:20 (Faceless / Tutorial)</code>")
+        else:
+            lines.append("\n💡 <b>Gợi ý Proof:</b> <code>Sample sát format (CapCut workflow)</code>")
 
     lines.append(f"\n📩 <i>Từ: {escape_html(sender)}</i>")
 

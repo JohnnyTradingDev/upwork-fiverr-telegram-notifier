@@ -5,15 +5,21 @@ logger = logging.getLogger(__name__)
 
 # Keywords for Video Editing (Skills, Software, Formats & Deliverables)
 VIDEO_KEYWORDS = [
-    r"\bvideo\b", r"\beditor\b", r"\bediting\b", r"\bedits?\b",
+    r"\bvideo\b", r"\bvideo editor\b", r"\bvideo editing\b",
     r"\bcapcut\b", r"\bpremiere\b", r"\bafter effects\b", r"\bdavinci\b",
     r"\byoutube\b", r"\byoutuber\b", r"\breels?\b", r"\btiktok\b",
     r"\bshorts?\b", r"\bshort[- ]form\b", r"\bfaceless\b",
     r"\bscreencast\b", r"\bscreencasting\b", r"\bscreen recording\b",
     r"\btalking[- ]head\b", r"\bb[- ]roll\b", r"\bbroll\b",
     r"\bsubtitles?\b", r"\bcaptions?\b", r"\bmotion graphics?\b",
-    r"\bvideo production\b", r"\bcontent creator\b", r"\bcontent creation\b",
-    r"\bthumbnail\b", r"\bvlog\b", r"\bpodcast\b"
+    r"\bvideo production\b", r"\bvlogs?\b"
+]
+
+# Non-video keywords to prevent false positives (CAD text edit, photo edit, etc.)
+EXCLUDE_NON_VIDEO = [
+    r"\bautocad\b", r"\bcad\b", r"\bsolidworks\b", r"\binventor\b",
+    r"\bcnc\b", r"\bmachinist\b", r"\bsheet metal\b",
+    r"\bphoto edit\b", r"\bphotoshop\b", r"\bcopy edit\b", r"\bbook edit\b"
 ]
 
 # Keywords for Finance, Crypto, Forex, Trading & Economics
@@ -42,6 +48,13 @@ def classify_job(title: str, snippet: str = "", client_info: str = "", full_text
     Returns: (category, matched_tags)
     """
     search_corpus = f"{title} {title} {snippet} {full_text}".lower()
+
+    # Check for non-video CAD/photo exclusions unless explicit video keywords exist
+    is_excluded = any(bool(re.search(e, search_corpus)) for e in EXCLUDE_NON_VIDEO)
+    explicit_video = bool(re.search(r"\b(video|capcut|premiere|after effects|davinci|youtube|reels?|tiktok|short[- ]form)\b", search_corpus))
+
+    if is_excluded and not explicit_video:
+        return "non_video", []
 
     matched_video = [k for k in VIDEO_KEYWORDS if re.search(k, search_corpus)]
     matched_finance = [k for k in FINANCE_KEYWORDS if re.search(k, search_corpus)]

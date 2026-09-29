@@ -5,6 +5,7 @@ import json
 import signal
 import logging
 from datetime import datetime, timezone, timedelta
+import threading
 from imapclient import IMAPClient
 from config import (
     GMAIL_USER,
@@ -19,6 +20,7 @@ from config import (
     IDLE_REFRESH_SECONDS
 )
 import db
+from bot_listener import run_bot_listener
 from classifier import classify_job, CATEGORY_DISPLAY
 from parser import parse_freelance_email
 from telegram_notifier import send_telegram_alert, send_daily_summary
@@ -198,6 +200,10 @@ def run_service():
 
     # Initialize SQLite Database
     db.init_db()
+
+    # Start Telegram interactive bot listener thread (2-way commands)
+    bot_thread = threading.Thread(target=run_bot_listener, daemon=True)
+    bot_thread.start()
 
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
         logger.error("GMAIL_USER or GMAIL_APP_PASSWORD is not set in .env! Please configure them.")
