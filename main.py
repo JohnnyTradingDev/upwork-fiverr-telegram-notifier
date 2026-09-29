@@ -4,6 +4,7 @@ import time
 import json
 import signal
 import logging
+from datetime import datetime, timezone, timedelta
 from imapclient import IMAPClient
 from config import (
     GMAIL_USER,
@@ -12,10 +13,15 @@ from config import (
     IMAP_PORT,
     ENABLE_UPWORK,
     ENABLE_FIVERR,
+    ONLY_FINANCIAL_VIDEO_ALERTS,
+    DAILY_SUMMARY_HOUR,
+    TIMEZONE_OFFSET,
     IDLE_REFRESH_SECONDS
 )
+import db
+from classifier import classify_job, CATEGORY_DISPLAY
 from parser import parse_freelance_email
-from telegram_notifier import send_telegram_alert
+from telegram_notifier import send_telegram_alert, send_daily_summary
 
 logging.basicConfig(
     level=logging.INFO,
@@ -104,24 +110,55 @@ def process_new_messages(client: IMAPClient, state: dict) -> dict:
                 save_state(state)
                 continue
 
-            logger.info(f"🚀 {platform.upper()} email detected: '{parsed['subject']}' from {parsed['sender']}")
-            
-            sent = send_telegram_alert(
-                subject=parsed["subject"],
-                sender=parsed["sender"],
-                email_type=parsed["email_type"],
+            # Classify job
+            category, tags = classify_job(
+                title=parsed["title"],
+                snippet=parsed["snippet"],
+                client_info=parsed["client_info"]
+            )
+            cat_display = CATEGORY_DISPLAY.get(category, category)
+
+            # Determine whether to send immediate alert
+            is_direct_interaction = parsed["email_type"] in ("invitation", "offer", "message", "order", "revision")
+            is_target_niche = (category == "financial_video")
+
+            should_alert_immediately = is_direct_interaction or (not ONLY_FINANCIAL_VIDEO_ALERTS) or is_target_niche
+
+            if should_alert_immediately:
+                reason = "DIRECT CLIENT INTERACTION" if is_direct_interaction else "FINANCIAL VIDEO NICHE MATCH"
+                logger.info(f"🚀 [{reason}] {platform.upper()} ({category}): '{parsed['title']}'")
+                sent = send_telegram_alert(
+                    subject=parsed["subject"],
+                    sender=parsed["sender"],
+                    email_type=parsed["email_type"],
+                    platform=parsed["platform"],
+                    category=category,
+                    title=parsed["title"],
+                    budget=parsed["budget"],
+                    client_info=parsed["client_info"],
+                    snippet=parsed["snippet"],
+                    url=parsed["url"]
+                )
+                if sent:
+                    logger.info(f"Telegram notification sent for UID {uid}")
+                else:
+                    logger.warning(f"Could not send Telegram notification for UID {uid}")
+            else:
+                logger.info(f"📦 [STORED TO DB] Saved job '{parsed['title']}' to database ({category}). Skipping immediate alert.")
+
+            # Save job to SQLite database
+            db.save_job(
+                uid=uid,
                 platform=parsed["platform"],
+                email_type=parsed["email_type"],
+                category=category,
                 title=parsed["title"],
                 budget=parsed["budget"],
                 client_info=parsed["client_info"],
+                url=parsed["url"],
                 snippet=parsed["snippet"],
-                url=parsed["url"]
+                notified_immediately=should_alert_immediately
             )
-            
-            if sent:
-                logger.info(f"Telegram notification sent for UID {uid} ({platform})")
-            else:
-                logger.warning(f"Could not send Telegram notification for UID {uid}")
 
             state["last_uid"] = uid
             save_state(state)
@@ -131,9 +168,37 @@ def process_new_messages(client: IMAPClient, state: dict) -> dict:
 
     return state
 
+def check_and_send_daily_summary(state: dict) -> dict:
+    """Checks if it is time to send the daily summary and sends it if due."""
+    try:
+        user_tz = timezone(timedelta(hours=TIMEZONE_OFFSET))
+        now = datetime.now(user_tz)
+        today_str = now.strftime("%Y-%m-%d")
+
+        if now.hour == DAILY_SUMMARY_HOUR and state.get("last_summary_date") != today_str:
+            logger.info(f"Daily summary time reached ({now.strftime('%H:%M')} TZ+{TIMEZONE_OFFSET}). Sending summary...")
+            stats = db.get_daily_stats(today_str)
+            if stats["total"] > 0:
+                sent = send_daily_summary(stats)
+                if sent:
+                    logger.info(f"Daily summary sent for {today_str}")
+                    state["last_summary_date"] = today_str
+                    save_state(state)
+            else:
+                # No jobs recorded today yet, do not spam or mark sent
+                logger.info(f"No jobs recorded today ({today_str}). Skipping daily summary.")
+                state["last_summary_date"] = today_str
+                save_state(state)
+    except Exception as e:
+        logger.error(f"Error checking daily summary: {e}")
+    return state
+
 def run_service():
     global running, current_client
     state = load_state()
+
+    # Initialize SQLite Database
+    db.init_db()
 
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
         logger.error("GMAIL_USER or GMAIL_APP_PASSWORD is not set in .env! Please configure them.")
@@ -164,6 +229,7 @@ def run_service():
 
             # Check if any messages arrived while we were disconnected
             state = process_new_messages(client, state)
+            state = check_and_send_daily_summary(state)
 
             # Reset backoff on successful connect
             backoff = 5
@@ -174,7 +240,7 @@ def run_service():
                 client.idle()
                 idle_start = time.time()
                 
-                # Check in short intervals (e.g. 15s) so signals/stop requests are responsive
+                # Check in short intervals (15s) so signals and daily summaries are responsive
                 has_updates = False
                 while running and (time.time() - idle_start < IDLE_REFRESH_SECONDS):
                     responses = client.idle_check(timeout=15)
@@ -182,11 +248,14 @@ def run_service():
                         logger.info(f"IDLE event received from Gmail: {responses}")
                         has_updates = True
                         break
+                    # Check daily summary timer
+                    state = check_and_send_daily_summary(state)
 
                 client.idle_done()
 
                 if has_updates:
                     state = process_new_messages(client, state)
+                    state = check_and_send_daily_summary(state)
 
         except SystemExit:
             logger.info("Exiting on SystemExit.")

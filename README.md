@@ -1,21 +1,29 @@
 # ⚡ Upwork & Fiverr Realtime Telegram Notifier
 
 > **Instant push notifications for Upwork & Fiverr freelance opportunities straight to your Telegram in less than 1 second.**  
-> Powered by Gmail **IMAP IDLE** socket push — no polling delay, no public IP, and no expensive webhooks required.
+> Powered by Gmail **IMAP IDLE** socket push — no polling delay, no public IP, and no expensive webhooks required.  
+> Includes **intelligent niche classification** (Finance/Crypto Video Editing focus), **database tracking**, and **daily recap digest**.
 
 ---
 
 ## 🌟 Key Features
 
 - ⚡ **True Real-time (< 1s):** Uses persistent IMAP IDLE socket connection. Gmail pushes new emails immediately to your server.
-- 🎯 **Upwork Intelligence:**
-  - Detects **Invitations to Interview**, **Contract Offers**, **Client Messages**, **Proposals Updates**, and **Saved Search Job Alerts**.
-  - Extracts **Job Title**, **Budget / Hourly Rate**, **Client Info** (Payment Verified, Rating ⭐, Total Spent 💰, Country 📍), and **Description Snippet**.
-  - Direct **"🚀 Mở trực tiếp trên Upwork"** action button.
-- 🟢 **Fiverr Intelligence:**
-  - Detects **New Orders**, **Client Messages**, **Matched Briefs / Buyer Requests**, **Revisions**, and **Reviews**.
-  - Extracts **Order Amount ($)**, **Buyer Handle (@buyer)**, and **Gig Description**.
-  - Direct **"🟢 Mở trực tiếp trên Fiverr"** action button.
+- 🎯 **Niche Filtering (Financial Video Editing):**
+  - **Immediate Alerts** for your target niche: Video Editing for Finance, Crypto, Forex, Trading, Stocks, Faceless YouTube, Short-form, and CapCut.
+  - Direct client interactions (**Invitations**, **Offers**, **Messages**, **Orders**) are **ALWAYS** alerted immediately regardless of category.
+  - Non-matching job alerts (e.g. Mechanical/3D CAD or other industries) are silently recorded in the database without spamming your Telegram.
+- 📊 **SQLite Database & Daily Summary Digest:**
+  - Persists all jobs to a local SQLite database (`jobs.db`).
+  - Categorizes into:
+    - 🎯 `financial_video`: Video Tài chính / Trading (Your core niche)
+    - 🎬 `general_video`: Video Editing chung
+    - ⚙️ `mechanical_3d`: Cơ khí / 3D CAD (Legacy niche)
+    - 📂 `other`: Other categories
+  - Automatically sends a **Daily Summary** to Telegram every evening (default 22:00 local time).
+- 🟢 **Fiverr & Upwork Intelligence:**
+  - Extracts **Job Title**, **Budget / Order Amount**, **Client Info** (Payment Verified, Rating ⭐, Total Spent 💰, Country 📍), and **Skills**.
+  - Direct **"🚀 Mở trực tiếp trên Upwork"** and **"🟢 Mở trực tiếp trên Fiverr"** action buttons.
 - 📱 **Beautiful Telegram UI:** Rich HTML message formatting with intuitive emoji badges and inline buttons.
 - 🛡️ **No Duplicates & No Missed Alerts:** Tracks processed message UIDs persistently in `state.json`.
 - 🔄 **Fault Tolerance & Auto-reconnect:** Resilient against network drops, socket timeouts, and IMAP keepalive expiration (RFC 2177).
@@ -33,22 +41,29 @@
            │
            │  (IMAP IDLE Socket Push < 1s)
            ▼
-┌──────────────────────────────────────────────┐
-│       Your Linux Server / VPS                │
-│                                              │
-│   [ IMAP IDLE Listener (main.py) ]           │
-│                  │                           │
-│                  ▼                           │
-│   [ Smart Parser (parser.py) ]               │
-│   • Detect platform (Upwork / Fiverr)        │
-│   • Extract Budget, Client info, Title, URL  │
-│                  │                           │
-│                  ▼                           │
-│   [ Telegram Notifier (telegram_notifier.py)]│
-└──────────────────┬───────────────────────────┘
-                   │
-                   ▼ (Telegram Bot API)
-       [ Your Telegram Chat / Mobile 🚀 ]
+┌────────────────────────────────────────────────────────┐
+│       Your Linux Server / VPS                          │
+│                                                        │
+│   [ IMAP IDLE Listener (main.py) ]                     │
+│                  │                                     │
+│                  ▼                                     │
+│   [ Smart Parser (parser.py) ]                         │
+│   • Detect platform (Upwork / Fiverr)                  │
+│   • Extract Budget, Client info, Title, URL            │
+│                  │                                     │
+│                  ▼                                     │
+│   [ Niche Classifier (classifier.py) ]                 │
+│   • Financial Video / General Video / 3D CAD / Other   │
+│                  │                                     │
+│         ┌────────┴────────┐                            │
+│         ▼                 ▼                            │
+│  [ SQLite DB ]    [ Immediate Filter ]                 │
+│  (jobs.db)        • Is Financial Video OR Direct Msg?  │
+│         │                 │                            │
+│         │ (22:00 Daily)   ├─ Yes ──► [ Telegram Alert ]│
+│         ▼                 │                            │
+│  [ Daily Summary ] ───────┴─ No  ──► [ Stored in DB ]  │
+└────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -66,8 +81,8 @@
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/JohnnyTradingDev/upwork-telegram-notifier.git
-cd upwork-telegram-notifier
+git clone https://github.com/JohnnyTradingDev/upwork-fiverr-telegram-notifier.git
+cd upwork-fiverr-telegram-notifier
 ```
 
 ### 2. Create Python virtual environment & install dependencies
@@ -98,6 +113,13 @@ TELEGRAM_CHAT_ID=123456789
 ENABLE_UPWORK=True
 ENABLE_FIVERR=True
 
+# Niche Filter Configuration
+ONLY_FINANCIAL_VIDEO_ALERTS=True
+
+# Daily Summary Configuration (22 = 10 PM in your local timezone)
+DAILY_SUMMARY_HOUR=22
+TIMEZONE_OFFSET=7
+
 # Advanced Settings
 IMAP_SERVER=imap.gmail.com
 IMAP_PORT=993
@@ -114,7 +136,7 @@ IDLE_REFRESH_SECONDS=900
 > Open your newly created bot in Telegram and press **/start** before testing.
 
 ### 4. Test Telegram notifications
-Run the built-in test script to verify both Upwork and Fiverr message delivery:
+Run the built-in test script to verify message delivery:
 ```bash
 ./manage.sh test
 ```
@@ -152,6 +174,8 @@ A helper script `manage.sh` is included for effortless operations:
 | `./manage.sh status` | View service status |
 | `./manage.sh logs` | View live real-time log stream |
 | `./manage.sh test` | Send sample Upwork & Fiverr notifications to Telegram |
+| `./manage.sh summary` | Trigger daily summary for today on-demand |
+| `./manage.sh summary 2026-09-29` | Trigger summary for a specific date |
 
 ---
 
@@ -160,8 +184,11 @@ A helper script `manage.sh` is included for effortless operations:
 ```text
 upwork-telegram-notifier/
 ├── config.py                 # Configuration loader from .env
+├── classifier.py             # Niche classifier (Financial Video, General Video, CAD, etc.)
+├── db.py                     # SQLite database management for job storage & recap
 ├── main.py                   # IMAP IDLE listener & reconnection lifecycle
 ├── parser.py                 # Intelligent email parsing (Upwork & Fiverr)
+├── send_summary.py           # On-demand and scheduled daily summary sender
 ├── telegram_notifier.py      # Rich Telegram message formatting & delivery
 ├── test_telegram.py          # Quick test utility
 ├── manage.sh                 # Operational CLI management script
@@ -176,7 +203,7 @@ upwork-telegram-notifier/
 ## 🔒 Security & Privacy
 
 - **No Passwords Stored in Code:** All credentials are loaded exclusively from `.env`.
-- `.env` and `state.json` are listed in `.gitignore` to prevent any accidental leakage.
+- `.env`, `state.json`, and `jobs.db` are listed in `.gitignore` to prevent any accidental leakage.
 - Utilizes Google's recommended App Password standard rather than your primary Google account password.
 
 ---

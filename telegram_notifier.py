@@ -13,7 +13,12 @@ def escape_html(text: str) -> str:
         return ""
     return html.escape(text)
 
-def get_badge(platform: str, email_type: str) -> str:
+def get_badge(platform: str, email_type: str, category: str = "") -> str:
+    if category == "financial_video":
+        if platform == "fiverr":
+            return "🎯 [FIVERR - VIDEO TÀI CHÍNH / TRADING]"
+        return "🎯 [UPWORK - VIDEO TÀI CHÍNH / TRADING]"
+
     if platform == "fiverr":
         badges = {
             "order": "📦 [FIVERR - ĐƠN HÀNG MỚI]",
@@ -41,6 +46,7 @@ def send_telegram_alert(
     sender: str,
     email_type: str,
     platform: str = "upwork",
+    category: str = "",
     job_title: str = "",
     title: str = "",
     budget: str = "",
@@ -56,7 +62,7 @@ def send_telegram_alert(
         return False
 
     display_title = title or job_title or subject
-    badge = get_badge(platform, email_type)
+    badge = get_badge(platform, email_type, category)
 
     lines = [f"<b>{badge}</b>\n"]
 
@@ -74,7 +80,7 @@ def send_telegram_alert(
         clean_snippet = snippet.strip()
         if len(clean_snippet) > 1200:
             clean_snippet = clean_snippet[:1200] + "..."
-        lines.append(f"\n📝 <b>Nội dung:</b>\n<i>{escape_html(clean_snippet)}</i>")
+        lines.append(f"\n📝 <b>Nội dung:</b>\n<i>{clean_snippet}</i>")
 
     lines.append(f"\n📩 <i>Từ: {escape_html(sender)}</i>")
 
@@ -115,4 +121,69 @@ def send_telegram_alert(
             return False
     except Exception as e:
         logger.error(f"Failed to send Telegram message: {e}")
+        return False
+
+def send_daily_summary(stats: dict) -> bool:
+    """
+    Sends the end-of-day summary to Telegram.
+    """
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        logger.error("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing!")
+        return False
+
+    date_str = stats.get("date_str", "")
+    total = stats.get("total", 0)
+    cats = stats.get("categories", {})
+    financial_jobs = stats.get("financial_jobs", [])
+
+    fin_count = cats.get("financial_video", 0)
+    general_video_count = cats.get("general_video", 0)
+    mech_count = cats.get("mechanical_3d", 0)
+    other_count = cats.get("other", 0)
+
+    lines = [
+        f"<b>📊 TỔNG KẾT VIỆC LÀM HÔM NAY ({date_str})</b>\n",
+        f"Tổng số cơ hội ghi nhận: <b>{total}</b> jobs\n",
+        f"🎯 <b>Video Tài chính (Ngách của bạn):</b> <b>{fin_count}</b> jobs",
+        f"🎬 <b>Video Editing chung:</b> {general_video_count} jobs",
+        f"⚙️ <b>Cơ khí / 3D CAD (Ngách cũ):</b> {mech_count} jobs",
+        f"📂 <b>Ngành nghề khác:</b> {other_count} jobs\n"
+    ]
+
+    if financial_jobs:
+        lines.append("🔥 <b>Các job Video Tài chính đã báo hôm nay:</b>")
+        for i, j in enumerate(financial_jobs[:8], 1):
+            title = escape_html(j.get("title", ""))
+            budget = escape_html(j.get("budget", ""))
+            url = j.get("url", "")
+            budget_str = f" - <code>{budget}</code>" if budget else ""
+            if url:
+                lines.append(f"{i}. <a href=\"{url}\">{title}</a>{budget_str}")
+            else:
+                lines.append(f"{i}. {title}{budget_str}")
+        if len(financial_jobs) > 8:
+            lines.append(f"<i>... và {len(financial_jobs) - 8} job khác</i>")
+    else:
+        lines.append("<i>💡 Hôm nay chưa có job Video Tài chính mới nào. Bot vẫn đang túc trực 24/7!</i>")
+
+    message_text = "\n".join(lines)
+
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message_text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+
+    try:
+        res = requests.post(TELEGRAM_API_URL, json=payload, timeout=10)
+        res_data = res.json()
+        if res.status_code == 200 and res_data.get("ok"):
+            logger.info("Daily summary sent to Telegram successfully.")
+            return True
+        else:
+            logger.warning(f"Failed to send summary: {res_data}")
+            return False
+    except Exception as e:
+        logger.error(f"Error sending daily summary: {e}")
         return False

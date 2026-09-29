@@ -23,8 +23,12 @@ case "$1" in
   test)
     "$DIR/venv/bin/python3" "$DIR/test_telegram.py"
     ;;
+  summary)
+    shift
+    "$DIR/venv/bin/python3" "$DIR/send_summary.py" "$@"
+    ;;
   *)
-    echo "Usage: $0 {start|stop|restart|status|logs|test}"
+    echo "Usage: $0 {start|stop|restart|status|logs|test|summary [YYYY-MM-DD]}"
     exit 1
     ;;
 esac
