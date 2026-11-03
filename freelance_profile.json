@@ -5,7 +5,7 @@
   ],
   "portfolio_url": "",
   "evidence": {
-    "short_video": "Có dự án demo video dọc Remotion tại server; chọn bản xuất phù hợp trước khi gửi khách.",
+    "short_video": "Người dùng xác nhận edit chủ yếu bằng DaVinci Resolve Free và CapCut. Đối chiếu job với mẫu dựng thật trước khi gửi proposal.",
     "automation": "Có hệ thống email → SQLite → Telegram đang vận hành và demo nhận brief FlowDesk.",
     "website": "Có demo FlowDesk: form, lưu dữ liệu, quản lý trạng thái và xuất CSV."
   },
@@ -16,5 +16,10 @@
     "professional translation"
   ],
   "note": "Điểm là độ khớp với tài sản demo, không xác nhận tay nghề hoặc xác suất trúng job. Cập nhật hồ sơ sau khi tự kiểm tra năng lực.",
-  "positioning": "Video editor. Automation và website là công cụ hỗ trợ nội bộ, không phải hướng chào dịch vụ hiện tại."
+  "positioning": "Upwork Video Editor, chủ yếu DaVinci Resolve Free và CapCut. Remotion chỉ phục vụ BingX, không phải quy trình Upwork chính.",
+  "editing_tools": [
+    "DaVinci Resolve Free",
+    "CapCut"
+  ],
+  "secondary_workflow": "Remotion/BingX là nhánh riêng."
 }

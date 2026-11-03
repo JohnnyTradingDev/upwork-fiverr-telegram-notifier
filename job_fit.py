@@ -34,7 +34,7 @@ def score_job(job, profile=None):
     score, track = 10, None
     if video and 'short_video' in tracks:
         track, score = 'short_video', 42
-        reasons.append('Có demo video dọc để đối chiếu yêu cầu.')
+        reasons.append('Khớp hướng video editor; cần đối chiếu mẫu dựng thực tế.')
         if has(text, r'\b(short[- ]?form|reels?|youtube shorts|tiktok|vertical)\b|9:16'):
             score += 15
             reasons.append('Đúng định dạng video ngắn/dọc.')
@@ -77,9 +77,15 @@ def score_job(job, profile=None):
     if has(text, r'premiere|after effects|\.aep\b|\.prproj\b'):
         score -= 20
         gaps.append('Yêu cầu Adobe chưa có năng lực/file nguồn được xác minh trong hồ sơ.')
-    if has(text, r'\b(capcut|davinci resolve|avid)\b'):
+    confirmed_tools = ' '.join(profile.get('editing_tools', [])).lower()
+    if ((has(text, r'\bcapcut\b') and 'capcut' not in confirmed_tools)
+        or (has(text, r'\bdavinci resolve\b') and 'davinci' not in confirmed_tools)
+        or has(text, r'\bavid\b')):
         score -= 20
-        gaps.append('Chưa xác minh khả năng giao bằng phần mềm biên tập được yêu cầu; demo hiện có dùng Remotion.')
+        gaps.append('Phần mềm biên tập yêu cầu chưa nằm trong công cụ người dùng xác nhận sử dụng.')
+    if has(text, r'\b(magic mask|speed warp|super scale|resolve studio required)\b'):
+        score -= 20
+        gaps.append('Có yêu cầu liên quan Resolve Studio; người dùng hiện dùng Resolve Free, cần làm rõ phương án thay thế.')
     if has(text, r'\b(3d|blender|unreal|houdini|cinema 4d)\b'):
         score -= 25
         gaps.append('Chưa có demo 3D tương ứng.')

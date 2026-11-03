@@ -38,8 +38,8 @@ class FitTests(unittest.TestCase):
         self.assertTrue(any('lượt xem' in flag for flag in score_job(views)['flags']))
 
     def test_capcut_project_is_not_claimed_as_remotion_capability(self):
-        fit=score_job({'title':'CapCut video editor','snippet':'Restyle a reel already cut in CapCut.'})
-        self.assertTrue(any('phần mềm' in gap for gap in fit['gaps']))
+        fit=score_job({'title':'CapCut video editor','snippet':'Restyle a reel already cut in CapCut.'},dict(load_profile(),editing_tools=[]))
+        self.assertTrue(any('phần mềm' in gap.lower() for gap in fit['gaps']))
 
     def test_risks_and_unverified_requirements_reduce_priority(self):
         base={'title':'Short video editor','snippet':'Reels vertical editing. '*10,'budget':'$100'}
@@ -59,6 +59,14 @@ class FitTests(unittest.TestCase):
         jobs=[{'id':1,'email_type':'job_alert','title':'Python Telegram automation','snippet':'Build a form workflow.'},{'id':2,'email_type':'job_alert','title':'TikTok video editor','snippet':'Edit a vertical reel.'},{'id':3,'email_type':'job_alert','title':'Mechanical CAD engineer','snippet':'Industrial automation enclosure.'}]
         ranked=rank_jobs(jobs,5,profile)
         self.assertEqual([item['job']['id'] for item in ranked],[2])
+
+    def test_confirmed_davinci_capcut_workflow(self):
+        profile=dict(load_profile(),editing_tools=['DaVinci Resolve Free','CapCut'])
+        for title in ('CapCut video editor','DaVinci Resolve video editor'):
+            fit=score_job({'title':title,'snippet':'Edit a vertical reel from supplied footage.'},profile)
+            self.assertFalse(any('Phần mềm biên tập' in gap for gap in fit['gaps']))
+        studio=score_job({'title':'DaVinci Resolve video editor','snippet':'Magic Mask required.'},profile)
+        self.assertTrue(any('Studio' in gap for gap in studio['gaps']))
 
     def test_drafts_have_no_fabricated_claims(self):
         for title in ['Translate Vietnamese','Crypto reels editor','Python automation']:
