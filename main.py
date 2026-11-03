@@ -17,13 +17,15 @@ from config import (
     ONLY_FINANCIAL_VIDEO_ALERTS,
     DAILY_SUMMARY_HOUR,
     TIMEZONE_OFFSET,
-    IDLE_REFRESH_SECONDS
+    IDLE_REFRESH_SECONDS,
+    UPWORK_COOKIE
 )
 import db
 from bot_listener import run_bot_listener
 from classifier import classify_job, CATEGORY_DISPLAY
 from parser import parse_freelance_email
 from telegram_notifier import send_telegram_alert, send_daily_summary
+from upwork_fetcher import fetch_upwork_job_details
 
 logging.basicConfig(
     level=logging.INFO,
@@ -112,6 +114,19 @@ def process_new_messages(client: IMAPClient, state: dict) -> dict:
                 save_state(state)
                 continue
 
+            # Enrich job details if Upwork session cookie is available
+            if platform == "upwork" and UPWORK_COOKIE and parsed.get("url"):
+                try:
+                    logger.info("Attempting to fetch full Upwork job details using session cookie...")
+                    full_details = fetch_upwork_job_details(parsed["url"], UPWORK_COOKIE)
+                    if full_details.get("success"):
+                        logger.info("Successfully retrieved full job description from Upwork!")
+                        full_desc = full_details.get("description", "")
+                        if full_desc:
+                            parsed["snippet"] = full_desc
+                except Exception as e:
+                    logger.warning(f"Error fetching full details: {e}")
+
             # Classify job
             category, tags = classify_job(
                 title=parsed["title"],
@@ -139,7 +154,8 @@ def process_new_messages(client: IMAPClient, state: dict) -> dict:
                     budget=parsed["budget"],
                     client_info=parsed["client_info"],
                     snippet=parsed["snippet"],
-                    url=parsed["url"]
+                    url=parsed["url"],
+                    uid=uid
                 )
                 if sent:
                     logger.info(f"Telegram notification sent for UID {uid}")

@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
+load_dotenv(ENV_PATH)
 
 # Gmail Configuration
 GMAIL_USER = os.getenv("GMAIL_USER", "").strip()
@@ -12,6 +13,9 @@ IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
 # Telegram Configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+
+# Upwork Session Cookie (for scraping full descriptions through Cloudflare)
+UPWORK_COOKIE = os.getenv("UPWORK_COOKIE", "").strip()
 
 # Platform Flags
 ENABLE_UPWORK = os.getenv("ENABLE_UPWORK", "True").lower() in ("true", "1", "yes")

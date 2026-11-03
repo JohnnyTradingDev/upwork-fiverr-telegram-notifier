@@ -3,6 +3,7 @@ import logging
 import requests
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 from red_flags import scan_red_flags
+from job_fit import score_job
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,8 @@ def send_telegram_alert(
     budget: str = "",
     client_info: str = "",
     snippet: str = "",
-    url: str = ""
+    url: str = "",
+    uid: int = None
 ) -> bool:
     """
     Sends a formatted alert to Telegram for Upwork or Fiverr,
@@ -82,7 +84,7 @@ def send_telegram_alert(
         clean_snippet = snippet.strip()
         if len(clean_snippet) > 1200:
             clean_snippet = clean_snippet[:1200] + "..."
-        lines.append(f"\n📝 <b>Nội dung:</b>\n<i>{clean_snippet}</i>")
+        lines.append(f"\n📝 <b>Nội dung:</b>\n<i>{escape_html(clean_snippet)}</i>")
 
     # Scan for Red Flags in title + snippet
     corpus = f"{display_title} {snippet}".lower()
@@ -92,14 +94,13 @@ def send_telegram_alert(
         for f in flags:
             lines.append(f"• <i>{f}</i>")
 
-    # Suggest Portfolio Proof for Financial Video jobs
-    if category == "financial_video":
-        if any(w in corpus for w in ["crypto", "shorts", "reels", "tiktok", "bitcoin"]):
-            lines.append("\n💡 <b>Gợi ý Proof:</b> <code>Sample Video Crypto 183K views (Short-form)</code>")
-        elif any(w in corpus for w in ["forex", "mt4", "mt5", "trading", "tutorial", "screencast"]):
-            lines.append("\n💡 <b>Gợi ý Proof:</b> <code>Sample Video MT5 2:20 (Faceless / Tutorial)</code>")
-        else:
-            lines.append("\n💡 <b>Gợi ý Proof:</b> <code>Sample sát format (CapCut workflow)</code>")
+    fit = score_job({"title": display_title, "snippet": snippet, "budget": budget})
+    lines.append(f"\n🎯 <b>Độ phù hợp: {fit['score']}/100 · {fit['label']}</b>")
+    for reason in fit['reasons'][:2]:
+        lines.append("+ " + escape_html(reason))
+    for gap in fit['gaps'][:2]:
+        lines.append("Cần kiểm tra: " + escape_html(gap))
+    lines.append("<i>Độ khớp với demo, không phải xác suất trúng job. /top để xem shortlist.</i>")
 
     lines.append(f"\n📩 <i>Từ: {escape_html(sender)}</i>")
 
@@ -112,12 +113,17 @@ def send_telegram_alert(
         "disable_web_page_preview": False
     }
 
+    keyboard_row = []
     if url and url.startswith("http"):
-        btn_text = "🟢 Mở trực tiếp trên Fiverr" if platform == "fiverr" else "🚀 Mở trực tiếp trên Upwork"
+        btn_text = "🟢 Mở trên Fiverr" if platform == "fiverr" else "🚀 Mở trên Upwork"
+        keyboard_row.append({"text": btn_text, "url": url})
+
+    if uid:
+        keyboard_row.append({"text": "✍️ Soạn Proposal", "callback_data": f"draft:{uid}"})
+
+    if keyboard_row:
         payload["reply_markup"] = {
-            "inline_keyboard": [
-                [{"text": btn_text, "url": url}]
-            ]
+            "inline_keyboard": [keyboard_row]
         }
 
     try:

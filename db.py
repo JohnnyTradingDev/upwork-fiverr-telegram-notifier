@@ -134,3 +134,47 @@ def get_daily_stats(date_str: str = None) -> dict:
         logger.error(f"Error reading daily stats from DB: {e}")
 
     return stats
+
+def get_job(job_id: int = None) -> dict:
+    """Returns a specific job by ID, or the most recent job if job_id is None."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            if job_id:
+                cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+            else:
+                cursor.execute("SELECT * FROM jobs ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+    except Exception as e:
+        logger.error(f"Error fetching job: {e}")
+    return {}
+
+def get_job_by_uid(uid: int) -> dict:
+    """Returns a job by its email UID."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM jobs WHERE uid = ?", (uid,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+    except Exception as e:
+        logger.error(f"Error fetching job by uid: {e}")
+    return {}
+
+def get_recent_jobs(days: int = 7, limit: int = 500) -> list[dict]:
+    """Bounded recent selection; existing database rows are never modified."""
+    days = max(1, min(int(days), 30))
+    limit = max(1, min(int(limit), 1000))
+    cutoff = (datetime.now(USER_TZ) - timedelta(days=days - 1)).strftime('%Y-%m-%d')
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            return [dict(r) for r in conn.execute('SELECT * FROM jobs WHERE date_str >= ? ORDER BY id DESC LIMIT ?', (cutoff, limit))]
+    except sqlite3.Error:
+        logger.exception('Could not read recent jobs')
+        return []

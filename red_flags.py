@@ -2,6 +2,10 @@ import re
 
 RED_FLAG_PATTERNS = [
     (
+        r"(?:per|/)\s*(?:1[,.]?000|1000|1k)\s*views|pay(?:ment)?\s*(?:based|depends)\s*on\s*views",
+        "⚠️ Có cơ chế trả theo lượt xem; cần xác nhận khoản trả cố định và cách tính."
+    ),
+    (
         r"(?:free|unpaid)\s*(?:test|sample|trial)|edit\s*(?:a\s*)?sample\s*for\s*free|do\s*a\s*free\s*video",
         "🚨 Yêu cầu làm test miễn phí (Free / Unpaid sample)"
     ),

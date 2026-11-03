@@ -1,0 +1,20 @@
+{
+  "name": "Johnny",
+  "tracks": [
+    "short_video"
+  ],
+  "portfolio_url": "",
+  "evidence": {
+    "short_video": "Có dự án demo video dọc Remotion tại server; chọn bản xuất phù hợp trước khi gửi khách.",
+    "automation": "Có hệ thống email → SQLite → Telegram đang vận hành và demo nhận brief FlowDesk.",
+    "website": "Có demo FlowDesk: form, lưu dữ liệu, quản lý trạng thái và xuất CSV."
+  },
+  "unverified_requirements": [
+    "Adobe Premiere project",
+    "After Effects source",
+    "3D animation",
+    "professional translation"
+  ],
+  "note": "Điểm là độ khớp với tài sản demo, không xác nhận tay nghề hoặc xác suất trúng job. Cập nhật hồ sơ sau khi tự kiểm tra năng lực.",
+  "positioning": "Video editor. Automation và website là công cụ hỗ trợ nội bộ, không phải hướng chào dịch vụ hiện tại."
+}

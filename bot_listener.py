@@ -24,8 +24,9 @@ def send_reply(text: str, reply_markup=None):
     except Exception as e:
         logger.error(f"Error sending bot reply: {e}")
 
-def handle_command(cmd: str):
-    cmd = cmd.strip().lower().split()[0]
+def handle_command(cmd_text: str):
+    parts = cmd_text.strip().split()
+    cmd = parts[0].lower()
     user_now = datetime.now(timezone(timedelta(hours=TIMEZONE_OFFSET)))
     today_str = user_now.strftime("%Y-%m-%d")
 
@@ -34,12 +35,43 @@ def handle_command(cmd: str):
             "👋 <b>Xin chào Johnny!</b>\n"
             "Bot săn job Upwork & Fiverr đang túc trực 24/7.\n\n"
             "📌 <b>Các lệnh nhanh:</b>\n"
+            "✍️ /draft - Soạn nhanh Proposal cho job mới nhất\n"
+            "✍️ /draft [id] - Soạn Proposal cho job theo ID (vd: /draft 1125)\n"
+            "🎯 /top - 5 job phù hợp trong 7 ngày\n"
+            "🔎 /fit [id] - Điểm phù hợp và điều cần hỏi\n"
             "📊 /summary - Xem tổng kết job Video hôm nay\n"
             "🔥 /today - Xem các job Video Tài chính hôm nay\n"
             "⚡ /status - Kiểm tra trạng thái server & Gmail\n"
             "🧪 /test - Gửi lại tin nhắn mẫu thử nghiệm"
         )
         send_reply(msg)
+
+    elif cmd == "/top":
+        from job_fit import rank_jobs
+        ranked = rank_jobs(db.get_recent_jobs(), limit=5)
+        lines = ["🎯 <b>SHORTLIST 7 NGÀY</b>", "Điểm khớp với demo, không phải xác suất trúng job."]
+        if not ranked:
+            lines.append("Chưa có job phù hợp để xếp hạng trong 7 ngày qua.")
+        for item in ranked:
+            job, fit = item['job'], item['fit']
+            lines.append(f"\n<b>#{job['id']} · {fit['score']}/100 · {escape_html(fit['label'])}</b>\n{escape_html(str(job.get('title', ''))[:180])}")
+            if fit['reasons']:
+                lines.append(escape_html(fit['reasons'][0]))
+            if fit['gaps']:
+                lines.append("Cần kiểm tra: " + escape_html(fit['gaps'][0]))
+            lines.append(f"/fit {job['id']} · /draft {job['id']}")
+        send_reply("\n".join(lines))
+
+    elif cmd == "/fit":
+        from job_fit import score_job, format_fit
+        if len(parts) != 2 or not parts[1].isdigit():
+            send_reply("Dùng /fit [id], ví dụ /fit 1125. Xem ID trong /top.")
+            return
+        job = db.get_job(int(parts[1]))
+        if not job:
+            send_reply("Không tìm thấy job theo ID này.")
+            return
+        send_reply(f"<b>ĐỘ PHÙ HỢP JOB #{job['id']}</b>\n" + escape_html(format_fit(score_job(job))))
 
     elif cmd == "/summary":
         stats = db.get_daily_stats(today_str)
@@ -97,6 +129,90 @@ def handle_command(cmd: str):
             url="https://www.upwork.com"
         )
 
+    elif cmd in ("/draft", "/proposal"):
+        job_id = None
+        if len(parts) > 1:
+            if len(parts) != 2 or not parts[1].isdigit():
+                send_reply("Dùng /draft [id] với ID trong /top, hoặc /draft cho job mới nhất.")
+                return
+            job_id = int(parts[1])
+
+        job = db.get_job(job_id)
+        if not job:
+            send_reply("❌ <b>Không tìm thấy job trong database.</b>")
+            return
+
+        from proposal_generator import draft_proposal
+        proposal_text = draft_proposal(job)
+        jid = job.get("id")
+        title = escape_html(job.get("title", ""))
+        budget = escape_html(job.get("budget", ""))
+        url = job.get("url", "")
+
+        msg = (
+            f"✍️ <b>PROPOSAL GỢI Ý CHO JOB #{jid}</b>\n"
+            f"📌 <b>Tiêu đề:</b> {title}\n"
+        )
+        if budget:
+            msg += f"💰 <b>Ngân sách:</b> <code>{budget}</code>\n"
+        if url:
+            msg += f"👉 <a href=\"{url}\">Mở link Upwork</a>\n"
+
+        msg += (
+            f"\n📋 <b>Bản nháp chào thầu:</b>\n"
+            f"<pre>{escape_html(proposal_text)}</pre>\n\n"
+            f"💡 <i>Bản nháp cần đọc lại, bổ sung mẫu liên quan và xác nhận phạm vi trước khi gửi.</i>"
+        )
+        send_reply(msg)
+
+def handle_callback_query(cq: dict):
+    cq_id = cq.get("id")
+    from_user = cq.get("from", {})
+    from_id = str(from_user.get("id", ""))
+    if from_id != str(TELEGRAM_CHAT_ID):
+        return
+
+    # Acknowledge callback query immediately so button spinner stops
+    try:
+        requests.post(f"{TELEGRAM_API}/answerCallbackQuery", json={"callback_query_id": cq_id, "text": "⚡ Đang tạo Proposal..."}, timeout=5)
+    except Exception:
+        pass
+
+    data = cq.get("data", "")
+    if data.startswith("draft:"):
+        target_id_str = data.split("draft:")[1]
+        job = None
+        if target_id_str.isdigit():
+            val = int(target_id_str)
+            job = db.get_job_by_uid(val)
+
+        if not job:
+            send_reply("❌ <b>Không tìm thấy dữ liệu job này trong database.</b>")
+            return
+
+        from proposal_generator import draft_proposal
+        proposal_text = draft_proposal(job)
+        jid = job.get("id")
+        title = escape_html(job.get("title", ""))
+        budget = escape_html(job.get("budget", ""))
+        url = job.get("url", "")
+
+        msg = (
+            f"⚡ <b>PROPOSAL CHÀO THẦU CẤP TỐC (Job #{jid})</b>\n"
+            f"📌 <b>Tiêu đề:</b> {title}\n"
+        )
+        if budget:
+            msg += f"💰 <b>Ngân sách:</b> <code>{budget}</code>\n"
+        if url:
+            msg += f"👉 <a href=\"{url}\">Mở link Upwork để nộp thầu</a>\n"
+
+        msg += (
+            f"\n📋 <b>Bản nháp chào thầu:</b>\n"
+            f"<pre>{escape_html(proposal_text)}</pre>\n\n"
+            f"💡 <i>Bản nháp cần đọc lại, bổ sung mẫu liên quan và xác nhận phạm vi trước khi gửi.</i>"
+        )
+        send_reply(msg)
+
 def run_bot_listener():
     """Background loop polling for user commands via Telegram getUpdates."""
     logger.info("Starting Telegram interactive command listener...")
@@ -117,6 +233,13 @@ def run_bot_listener():
 
             for update in data.get("result", []):
                 offset = update["update_id"] + 1
+
+                # Handle inline button click (callback_query)
+                cq = update.get("callback_query")
+                if cq:
+                    handle_callback_query(cq)
+                    continue
+
                 message = update.get("message")
                 if not message:
                     continue
